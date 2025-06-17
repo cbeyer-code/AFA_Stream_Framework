@@ -1,0 +1,3 @@
+- Fix AED Merits
+- Make sure any dataframe can be used as a dataset
+- add optional normalization of data in preprocessing
