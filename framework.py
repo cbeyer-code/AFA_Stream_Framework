@@ -182,7 +182,7 @@ def run_simulation(
             metric_accuracy.update(y_true, y_pred)
 
         # --- LEARNING FLOW ---
-        # a. Learn the AFA components (using true data)
+        # a. Learn the AFA components (using true data) ToDo: use x_acquired
         afa_transformer.learn_one((x_miss, x_true), y_true)
 
         # b. Learn the imputer (using the partially acquired data)
