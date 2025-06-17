@@ -13,7 +13,7 @@ from river import (
     preprocessing,
     stats,
     stream,
-    tree,
+    tree, linear_model, optim, forest,
 )
 import matplotlib.pyplot as plt
 
@@ -142,6 +142,9 @@ def run_simulation(
         classifier_model
     )
 
+    imputer = preprocessing.StatImputer()
+    classifier = classifier_model
+
     # 3. Setup Metrics
     metric_kappa = metrics.CohenKappa()
     metric_accuracy = metrics.Accuracy()
@@ -163,19 +166,30 @@ def run_simulation(
     step = 0
     # Custom loop to handle the parallel stream and metric tracking
     for (x_miss, y_miss), (x_true, y_true) in parallel_stream:
-        # We need to pass the tuple to the AFA transformer
-        x_for_pipeline = (x_miss, x_true)
+        # --- PREDICTION FLOW ---
+        # a. Perform Active Feature Acquisition
+        x_acquired = afa_transformer.transform_one((x_miss, x_true))
 
-        # Predict
-        y_pred = model_pipeline.predict_one(x_for_pipeline)
+        # b. Impute remaining missing values
+        x_imputed = imputer.transform_one(x_acquired)
 
-        # Update metrics
+        # c. Make a prediction
+        y_pred = classifier.predict_one(x_imputed)
+
+        # --- METRIC UPDATE ---
         if y_pred is not None:
             metric_kappa.update(y_true, y_pred)
             metric_accuracy.update(y_true, y_pred)
 
-        # Learn
-        model_pipeline.learn_one(x_for_pipeline, y_true)
+        # --- LEARNING FLOW ---
+        # a. Learn the AFA components (using true data)
+        afa_transformer.learn_one((x_miss, x_true), y_true)
+
+        # b. Learn the imputer (using the partially acquired data)
+        imputer.learn_one(x_acquired)
+
+        # c. Learn the classifier (using the fully imputed data)
+        classifier.learn_one(x_imputed, y_true)
 
         # Record history
         if step % 10 == 0:
@@ -223,7 +237,7 @@ if __name__ == '__main__':
     # --- CONFIGURATION ---
     N_SAMPLES = 20000
     BUDGET_PER_INSTANCE = 1.0
-    MISSINGNESS = 0.8
+    MISSINGNESS = 0.5
     K_PARAM = 4  # For k-best, etc.
 
     # Select a dataset from river
@@ -234,11 +248,14 @@ if __name__ == '__main__':
     # --- CHOOSE YOUR COMPONENTS ---
 
     # 1. Classifier
-    classifier = tree.HoeffdingTreeClassifier(grace_period=100)
+    #classifier = tree.HoeffdingTreeClassifier(grace_period=100)
+    #classifier = tree.ExtremelyFastDecisionTreeClassifier(grace_period=100,delta=1e-5, min_samples_reevaluate=100)
+    #classifier = linear_model.LogisticRegression(optimizer=optim.SGD(.1))
+    classifier = forest.AMFClassifier(n_estimators=10, use_aggregation=True, dirichlet=0.5, seed=1)
 
     # 2. Scorer
-    scorer = RandomScorer(seed=42)
-    #scorer = AEDScorer(window_size=200)
+    #scorer = RandomScorer(seed=42)
+    scorer = AEDScorer(window_size=200)
 
     # 3. Budget Manager
     #budget_mgr = SimpleBudgetManager(budget_per_instance=BUDGET_PER_INSTANCE)

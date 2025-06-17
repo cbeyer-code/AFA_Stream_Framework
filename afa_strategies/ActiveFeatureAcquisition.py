@@ -22,6 +22,7 @@ class ActiveFeatureAcquisition(base.Transformer):
         self.k = k
         self.features_acquired_this_step = 0
 
+
     def _calculate_quality(self, features: List[str], merits: dict) -> float:
          """Calculates quality as the mean of merits for a given list of features."""
          feature_merits = [merits.get(f, 0) for f in features if f in merits]
