@@ -35,46 +35,6 @@ class ActiveFeatureAcquisition(base.Transformer):
         self.budget_manager.learn_one()
         return self
 
-    """ 
-    def transform_one_old(self, x):
-        # The input x is expected to be a tuple: (x_missing, x_complete)
-        x_miss, x_true = x
-        self.features_acquired_this_step = 0
-
-        # Identify missing features
-        missing_features = [f for f, v in x_miss.items() if v is None or pd.isna(v)]
-        if not missing_features:
-            return x_miss
-
-        # Get feature merits from the scorer
-        merits = self.scorer.get_merits(missing_features, self.feature_costs)
-        print(merits)
-        # Select acquisition candidates based on strategy
-        acquisition_candidates = self._select_candidates(x_miss, merits, missing_features)
-
-        # Perform acquisition
-        x_acquired = x_miss.copy()
-        # This loop attempts to acquire features one by one from the candidates list
-        for feature_to_acquire in acquisition_candidates:
-            cost = self.feature_costs.get(feature_to_acquire, 1)
-
-            # Calculate quality gain
-            quality_before = self._calculate_quality(x_acquired, merits)
-
-            # Temporarily acquire to calculate quality after
-            temp_x = x_acquired.copy()
-            temp_x[feature_to_acquire] = x_true[feature_to_acquire]
-            quality_after = self._calculate_quality(temp_x, merits)
-            quality_gain = quality_after - quality_before
-
-            # Ask budget manager for permission
-            if self.budget_manager.can_acquire(quality_gain, cost):
-                # If approved, permanently acquire
-                x_acquired[feature_to_acquire] = x_true[feature_to_acquire]
-                self.features_acquired_this_step += 1
-
-        return x_acquired
-    """
 
     def transform_one(self, x):
         # The input x is expected to be a tuple: (x_missing, x_complete)
