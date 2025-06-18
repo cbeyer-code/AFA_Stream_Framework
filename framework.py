@@ -158,7 +158,8 @@ def run_simulation(
         'accuracy': [],
         'budget_spent': [],
         'budget_received': [],
-        'features_acquired': []
+        'features_acquired': [],
+        'merits': {name: [] for name in feature_names}
     }
 
     # 4. Run Progressive Validation
@@ -204,7 +205,9 @@ def run_simulation(
             history['budget_spent'].append(budget_manager.get_spent_budget())
             history['budget_received'].append(budget_manager.get_received_budget())
             history['features_acquired'].append(afa_transformer.features_acquired_this_step)
-
+            current_merits = afa_transformer.scorer.get_global_merits()
+            for feature_name in history['merits']:
+                history['merits'][feature_name].append(current_merits.get(feature_name, 0))
         step += 1
         if step >= n_samples:
             break
@@ -215,7 +218,8 @@ def run_simulation(
 
 def plot_results(history: dict, title: str):
     """Plots the results of the simulation."""
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(18, 14))
+    fig.suptitle(title, fontsize=16)
 
     # Plot 1: Performance (Kappa)
     ax1.plot(history['step'], history['kappa'], label='Kappa Score', color='blue')
@@ -233,6 +237,51 @@ def plot_results(history: dict, title: str):
     ax2.set_title('Budget Usage Over Time')
     ax2.grid(True)
     ax2.legend()
+
+    # Plot 3: Feature Merits
+    features_to_plot = [
+        (name, hist) for name, hist in history['merits'].items()
+        if any(m > 0.001 for m in hist)
+    ]
+    num_features_to_plot = len(features_to_plot)
+
+    if num_features_to_plot > 0:
+        for feature_name, merit_history in features_to_plot:
+            ax3.plot(history['step'], merit_history, label=feature_name, alpha=0.8)
+
+    ax3.set_xlabel('Instances')
+    ax3.set_ylabel('Merit Score (AED/Cost)')
+    ax3.set_title('Feature Merits Over Time')
+    ax3.grid(True)
+    if num_features_to_plot > 10:
+        ax3.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize='small')
+    else:
+        ax3.legend(fontsize='small')
+
+    # Get the colors used in the time series plot to reuse them in the violin plot
+    lines = ax3.get_lines()
+    colors = [line.get_color() for line in lines]
+
+    # Plot 4: Feature Merits (Violin Plot)
+    if num_features_to_plot > 0:
+        merit_data = [hist for name, hist in features_to_plot]
+        merit_labels = [name for name, hist in features_to_plot]
+
+        parts = ax4.violinplot(merit_data, showmeans=False, showmedians=True)
+        # Customizing colors for the violin plot to match the time series
+        for i, pc in enumerate(parts['bodies']):
+            # Use modulo in case the number of colors is less than the number of bodies
+            pc.set_facecolor(colors[i % len(colors)])
+            pc.set_edgecolor('black')
+            pc.set_alpha(0.7)
+
+        parts['cmedians'].set_edgecolor('black')
+
+        ax4.set_title('Distribution of Feature Merits')
+        ax4.set_ylabel('Merit Score (AED/Cost)')
+        ax4.set_xticks(np.arange(1, len(merit_labels) + 1))
+        ax4.set_xticklabels(merit_labels, rotation=45, ha='right')
+        ax4.grid(axis='y')
 
     plt.tight_layout()
     plt.show()
