@@ -291,7 +291,7 @@ if __name__ == '__main__':
     # --- CONFIGURATION ---
     N_SAMPLES = 20000
     BUDGET_PER_INSTANCE = 1.0
-    MISSINGNESS = 0.5
+    MISSINGNESS = 0.75
     K_PARAM = 4  # For k-best, etc.
 
     # Select a dataset from river
