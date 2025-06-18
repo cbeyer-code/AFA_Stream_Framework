@@ -31,8 +31,7 @@ class ActiveFeatureAcquisition(base.Transformer):
     def learn_one(self, x, y=None):
         # The AFA transformer is "stateful" via its components (scorer, budget_manager)
         # We update the state of these components using the *true* data.
-        _, x_true = x
-        self.scorer.learn_one(x_true, y)
+        self.scorer.learn_one(x, y)
         self.budget_manager.learn_one()
         return self
 
