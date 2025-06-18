@@ -110,6 +110,8 @@ def run_simulation(
     data_gen = iter(dataset)
     first_x, first_y = next(data_gen)
     feature_names = list(first_x.keys())
+    scaler = preprocessing.MinMaxScaler()
+
 
     # Re-create a Pandas DataFrame for missingness creation
     df_list = [{'y': first_y, **first_x}]
@@ -168,7 +170,10 @@ def run_simulation(
     for (x_miss, y_miss), (x_true, y_true) in parallel_stream:
         # --- PREDICTION FLOW ---
         # a. Perform Active Feature Acquisition
-        x_acquired = afa_transformer.transform_one((x_miss, x_true))
+        scaler.learn_one(x_miss) #ToDo: This can lead to values which are out of bounds if x_true exceeds the ranges
+        x_miss_norm = scaler.transform_one(x_miss.copy())
+        x_true_norm = scaler.transform_one(x_true.copy())
+        x_acquired = afa_transformer.transform_one((x_miss_norm, x_true_norm))
 
         # b. Impute remaining missing values
         x_imputed = imputer.transform_one(x_acquired)
@@ -183,7 +188,7 @@ def run_simulation(
 
         # --- LEARNING FLOW ---
         # a. Learn the AFA components (using true data) ToDo: use x_acquired
-        afa_transformer.learn_one((x_miss, x_true), y_true)
+        afa_transformer.learn_one((x_miss_norm, x_true_norm), y_true)
 
         # b. Learn the imputer (using the partially acquired data)
         imputer.learn_one(x_acquired)
