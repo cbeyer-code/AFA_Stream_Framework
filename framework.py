@@ -107,21 +107,47 @@ def run_simulation(
 
     # 1. Prepare Data and Costs
     # Use the full dataset from the generator
-    data_gen = iter(dataset)
-    first_x, first_y = next(data_gen)
-    feature_names = list(first_x.keys())
-    scaler = preprocessing.MinMaxScaler()
+    #data_gen = iter(dataset)
+    #first_x, first_y = next(data_gen)
+    #feature_names = list(first_x.keys())
 
 
-    # Re-create a Pandas DataFrame for missingness creation
-    df_list = [{'y': first_y, **first_x}]
-    for i, (x, y) in enumerate(data_gen):
-        if i + 1 >= n_samples:
-            break
-        df_list.append({'y': y, **x})
-    data_sample = pd.DataFrame(df_list).rename(columns={'y': target_name})
+    # 1. Prepare Data and Costs
+    if isinstance(dataset, pd.DataFrame):
+        if n_samples:
+            data_sample = dataset.head(n_samples)
+        else:
+            data_sample = dataset
+        feature_names = data_sample.drop(columns=target_name).columns.tolist()
+    else:
+        # Assumes a river-compatible iterable (like a river.datasets object)
+        try:
+            data_gen = iter(dataset)
+            first_x, first_y = next(data_gen)
+            feature_names = list(first_x.keys())
+
+            # For generator-like datasets, n_samples should be provided or available
+            if n_samples is None:
+                try:
+                    # river datasets have n_samples attribute
+                    n_samples = dataset.n_samples
+                except AttributeError:
+                    raise ValueError("n_samples must be provided for datasets that are generators.")
+
+            df_list = [{'y': first_y, **first_x}]
+            # We already consumed one item with next(), so we iterate for n_samples - 1 more.
+            for i, (x, y) in enumerate(data_gen):
+                if i + 1 > n_samples:
+                    break
+                df_list.append({'y': y, **x})
+            data_sample = pd.DataFrame(df_list).rename(columns={'y': target_name})
+        except TypeError:
+            raise TypeError("Input dataset must be a pandas DataFrame or a river-compatible iterable.")
 
     stream_miss, stream_true = create_missingness(data_sample, target_name, missingness_rate)
+
+
+
 
     # Combine streams to pass (x_miss, x_true) tuples
     parallel_stream = zip(stream_miss, stream_true)
@@ -138,10 +164,19 @@ def run_simulation(
         k=k
     )
 
-    model_pipeline = compose.Pipeline(
-        afa_transformer,
-        preprocessing.StatImputer(),  # Impute any remaining missing values
-        classifier_model
+    # Identify types of features to set up scaler for AED
+    x_sample = data_sample.drop(columns=target_name).iloc[0].to_dict()
+    numerical_features = [k for k, v in x_sample.items() if isinstance(v, (int, float))]
+    categorical_features = [k for k, v in x_sample.items() if not isinstance(v, (int, float))]
+
+    # Print the detected feature types
+    print("Numerical features:", numerical_features)
+    print("Categorical features:", categorical_features)
+
+    #Preprocessing leaves categorical features as they are and min-max scales the numercial ones
+    preprocessing_pipeline = compose.TransformerUnion(
+        compose.Select(*numerical_features) | preprocessing.MinMaxScaler(),
+        compose.Select(*categorical_features)
     )
 
     imputer = preprocessing.StatImputer()
@@ -171,9 +206,9 @@ def run_simulation(
     for (x_miss, y_miss), (x_true, y_true) in parallel_stream:
         # --- PREDICTION FLOW ---
         # a. Perform Active Feature Acquisition
-        scaler.learn_one(x_miss) #ToDo: This can lead to values which are out of bounds if x_true exceeds the ranges
-        x_miss_norm = scaler.transform_one(x_miss.copy())
-        x_true_norm = scaler.transform_one(x_true.copy())
+        preprocessing_pipeline.learn_one(x_miss) #ToDo: This can lead to values which are out of bounds if x_true exceeds the ranges
+        x_miss_norm = preprocessing_pipeline.transform_one(x_miss.copy())
+        x_true_norm = preprocessing_pipeline.transform_one(x_true.copy())
         x_acquired = afa_transformer.transform_one((x_miss_norm, x_true_norm))
 
         # b. Impute remaining missing values
@@ -291,25 +326,47 @@ if __name__ == '__main__':
     # --- CONFIGURATION ---
     N_SAMPLES = 20000
     BUDGET_PER_INSTANCE = 1.0
-    MISSINGNESS = 0.75
+    MISSINGNESS = 0.5
     K_PARAM = 4  # For k-best, etc.
 
-    # Select a dataset from river
-    RIVER_DATASET = datasets.Elec2()
-    #print(RIVER_DATASET.desc)
-    TARGET = 'class'
+    USE_PANDAS_DF = True  # Set to True to use a local pandas DataFrame
+
+    if USE_PANDAS_DF:
+        # Example of loading a pandas DataFrame
+        # For this to work, you would need a 'my_dataset.csv' file in the same directory
+        try:
+            DATASET = pd.read_csv('dataset_generators/mixed_5k_shift')
+            TARGET = 'label'  # Change this to your target column
+        except FileNotFoundError:
+            print("Creating a dummy pandas DataFrame because 'my_dataset.csv' was not found.")
+            data = {
+                'num_feat_1': np.random.rand(N_SAMPLES) * 10,
+                'num_feat_2': np.random.rand(N_SAMPLES) * 5,
+                'cat_feat_1': np.random.choice(['A', 'B', 'C'], N_SAMPLES),
+                'cat_feat_2': np.random.choice(['X', 'Y', 'Z'], N_SAMPLES),
+                'target': np.random.choice([0, 1], N_SAMPLES)
+            }
+            DATASET = pd.DataFrame(data)
+            TARGET = 'target'
+
+    else:
+        # Use a river dataset
+        DATASET = datasets.Elec2()
+        TARGET = 'class'
+
+
 
     # --- CHOOSE YOUR COMPONENTS ---
 
     # 1. Classifier
     #classifier = tree.HoeffdingTreeClassifier(grace_period=100)
-    #classifier = tree.ExtremelyFastDecisionTreeClassifier(grace_period=100,delta=1e-5, min_samples_reevaluate=100)
+    classifier = tree.ExtremelyFastDecisionTreeClassifier(grace_period=100,delta=1e-5, min_samples_reevaluate=100)
     #classifier = linear_model.LogisticRegression(optimizer=optim.SGD(.1))
-    classifier = forest.AMFClassifier(n_estimators=10, use_aggregation=True, dirichlet=0.5, seed=1)
+    #classifier = forest.AMFClassifier(n_estimators=10, use_aggregation=True, dirichlet=0.5, seed=1)
 
     # 2. Scorer
-    #scorer = RandomScorer(seed=42)
-    scorer = AEDScorer(window_size=200)
+    scorer = RandomScorer(seed=42)
+    #scorer = AEDScorer(window_size=200)
 
     # 3. Budget Manager
     #budget_mgr = SimpleBudgetManager(budget_per_instance=BUDGET_PER_INSTANCE)
@@ -324,7 +381,7 @@ if __name__ == '__main__':
     # --- RUN ---
 
     history = run_simulation(
-        dataset=RIVER_DATASET,
+        dataset=DATASET,
         target_name=TARGET,
         classifier_model=classifier,
         scorer=scorer,
