@@ -259,7 +259,7 @@ def plot_results(history: dict, title: str):
     # Plot 1: Performance (Kappa)
     ax1.plot(history['step'], history['kappa'], label='Kappa Score', color='blue')
     ax1.set_ylabel('Kappa Score')
-    ax1.set_title(f'Model Performance - {title}')
+    ax1.set_title(f'Model Performance - Running Cohen Kappa')
     ax1.grid(True)
     ax1.legend()
     ax1.set_ylim(-1, 1)
@@ -365,8 +365,8 @@ if __name__ == '__main__':
     #classifier = forest.AMFClassifier(n_estimators=10, use_aggregation=True, dirichlet=0.5, seed=1)
 
     # 2. Scorer
-    scorer = RandomScorer(seed=42)
-    #scorer = AEDScorer(window_size=200)
+    #scorer = RandomScorer(seed=42)
+    scorer = AEDScorer(window_size=200)
 
     # 3. Budget Manager
     #budget_mgr = SimpleBudgetManager(budget_per_instance=BUDGET_PER_INSTANCE)
@@ -376,7 +376,7 @@ if __name__ == '__main__':
     cost_strat = 'equal'  # 'equal', 'increasing', 'decreasing'
 
     # 5. Acquisition Strategy
-    acq_strat = 'k-best'  # 'k-best', 'k-global-best', 'k-max-mean'
+    acq_strat = 'k-max-mean'  # 'k-best', 'k-global-best', 'k-max-mean'
 
     # --- RUN ---
 
